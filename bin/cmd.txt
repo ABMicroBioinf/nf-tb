@@ -1,0 +1,9 @@
+module load seqtk/v1.3-r117-dirty
+module load local_conda_env/tbprofiler/v3.0.4
+
+#extract sequence id which belong MTBC from kraken2 output report
+perl ../bin/taxonFilter.pl ERR019555.kraken2.output.txt  >name.list.txt
+
+seqtk subseq ../../nf-qc/example/outdir/qc/seqs/ERR019555_R1.qc.fastq.gz name.list.txt  > ERR019555_R1.tb.fastq
+seqtk subseq ../../nf-qc/example/outdir/qc/seqs/ERR019555_R2.qc.fastq.gz name.list.txt  > ERR019555_R2.tb.fastq
+tb-profiler profile -1 ERR019555_R1.tb.fastq -2 ERR019555_R2.tb.fastq -d . -t 8 -v 2 --no_trim

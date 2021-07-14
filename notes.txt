@@ -1,0 +1,4 @@
+We noted that TBProfiler provides the frequency with which a given marker was detected, defined as the fraction of reads presenting the resistance marker among reads mapped at this position
+
+filter the unique reads
+http://seqanswers.com/forums/archive/index.php/t-61908.html.

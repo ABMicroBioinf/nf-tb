@@ -1,0 +1,6 @@
+.vscode
+example
+example
+.nextflow*
+*~
+bin/*~
