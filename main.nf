@@ -15,6 +15,7 @@ def helpMessage() {
   --ref_genome              the fasta format reference genome for mapping (default tbdb.fasta )
   --mq                      mapping quality cutoff to filter the uniquelly mapped reads (default 10)
   --type                    paired-end or single-end (default: paired-end)
+  --min_samples_locus       Minimum of samples required to be present at a locus (default=1)
   --help                    This usage statement.
   """.stripIndent()
 }
@@ -45,64 +46,41 @@ if (params.type == 'single-end') {
       .set {reads_ch}
 }
 
-
 /*
 Step 1
 */
-process mtbc_namelist {
+process get_mtbc_reads {
   
-  publishDir "${params.outdir}", mode: "copy" 
+  publishDir "${params.outdir}/mtbc", mode: "copy" 
 
-  
   input:
   set val(name), file(kraken2_output_file) from kraken2_output_ch
-  
-  output:
-  file "*_mtbc_accession.txt" into mtbc_namelist_ch
-
-  script:
-  
-  """
-  taxonFilter.pl $kraken2_output_file  > ${name}_mtbc_accession.txt
-  """
-}
-
-/*
-Step 2
-*/
-process mtbc_reads {
-  
-  publishDir "${params.outdir}", mode: "copy" 
-
-  
-  input:
-  file(namelist) from mtbc_namelist_ch
   set val(name), file(reads) from reads_ch
   
   output:
   set val(name), file("*.mtbc.fastq") into mtbc_reads_ch
 
   script:
-  prefix = name  
-  if (params.type == 'single-end') {
+  
+   if (params.type == 'single-end') {
 
     """
-    seqtk subseq ${reads} ${namelist} > ${prefix}.mtbc.fastq
+    taxonFilter.pl $kraken2_output_file  > ${name}_mtbc_accession.txt
+    seqtk subseq ${reads} ${name}_mtbc_accession.txt > ${name}.mtbc.fastq
     """
   }
   else{
     """
-    seqtk subseq ${reads[0]} ${namelist} > ${prefix}_R1.mtbc.fastq
-    seqtk subseq ${reads[1]} ${namelist} > ${prefix}_R2.mtbc.fastq
+    taxonFilter.pl $kraken2_output_file  > ${name}_mtbc_accession.txt
+    seqtk subseq ${reads[0]} ${name}_mtbc_accession.txt > ${name}_R1.mtbc.fastq
+    seqtk subseq ${reads[1]} ${name}_mtbc_accession.txt > ${name}_R2.mtbc.fastq
     """
 
   }
 }
 
-process indexReference {
-    
-    publishDir "${params.outdir}/bwa_index", mode: "copy"
-
+process indexRefGenome {
+    //publishDir "${params.outdir}/bwa_index", mode: "copy"
     input:
       path genome from params.ref_genome
     output:
@@ -114,99 +92,148 @@ process indexReference {
     """
 }
 
-process mapping_and_filter {
+process mapping_mtbc_and_filter {
 
   label "small_mem"
 
-  publishDir "${params.outdir}", mode: "copy" 
+  publishDir "${params.outdir}/bam", mode: "copy" 
 
   input:
   set val(name), file(reads) from mtbc_reads_ch
-  path index from bwa_index.first()
+  path index from bwa_index
   path genome from params.ref_genome
   
   output:
-  set val(name), file("*.sorted.bam") into bam_ch
-  file "*.sorted.bam.bai" into bam_index_ch
+  set val(name), file("*.sort.bam") into bam_to_tbprofiling
+  set val(name), file("*.sort.bam") into bam_to_snippy
+  file "*" into mapped_ch
  
   script:
 
    if (params.type == 'single-end') {
     """
      bwa mem -t ${task.cpus} \
-     -c 100 -R '@RG\\tID:ERR036228\\tSM:ERR036228\\tPL:illumina' -M -T 50 \
+     -c 100 -R '@RG ID:${name} SM:${name} PL:illumina' -M -T 50 \
      ${genome} ${reads} \
      | samtools view -@ ${task.cpus} -Sb1 -q ${params.mq} - \
-     | samtools sort -@ ${task.cpus} -o ${name}.sorted.bam -
+     | samtools sort -@ ${task.cpus} -o ${name}.sort.bam -
 
-     samtools index -@ ${task.cpus} ${name}.sorted.bam
+     samtools index -@ ${task.cpus} ${name}.sort.bam
     """
   }
 
    else {
     """
      bwa mem -t ${task.cpus} \
-     -c 100 -R '@RG\\tID:ERR036228\\tSM:ERR036228\\tPL:illumina' -M -T 50 \
+     -c 100 -R '@RG\\tID:${name}\\tSM:${name}\\tPL:illumina' -M -T 50 \
      ${genome} ${reads[0]} ${reads[1]} \
      | samtools view -@ ${task.cpus} -Sb1 -q ${params.mq} - \
-     | samtools sort -@ ${task.cpus} -o ${name}.sorted.bam -
+     | samtools sort -@ ${task.cpus} -o ${name}.sort.bam -
 
-     samtools index -@ ${task.cpus} ${name}.sorted.bam
+     samtools index -@ ${task.cpus} ${name}.sort.bam
     """
   }
 }
 
-process call_tbprofiler_on_bam {
+process run_snippy {
   
   label "small_mem"
-
-  publishDir "${params.outdir}", mode: "copy" 
-
+  publishDir "${params.outdir}/snippy", mode: 'copy'
+  
   input:
-  set val(name), file(bam) from bam_ch
-  
+  set val(name), file(bam) from bam_to_snippy
+  path genome from params.ref_genome
+
   output:
-  file("*") into tbprofiler_output_ch
-
- //samtools sort -m 10G -@ ${task.cpus} -o ${name}.sorted.bam -) 3>&1 1>&2 2>&3 \
-  script:
-  
-    """
-    tb-profiler profile --threads ${task.cpus} --bam ${bam} --prefix ${name} --dir tbprofiler \
-      --csv --txt  --call_whole_genome --verbose 2 
-    """
-  
-
-}
-/*
-process call_tbprofiler_on_reads {
-  
-  label "small_mem"
-
-  publishDir "${params.outdir}", mode: "copy" 
-
-  input:
-  set val(name), file(reads) from mtbc_reads_ch
-  
-  output:
-  file("*") into tbprofiler_output_ch
+  file "*.whole.filter.vcf.gz" into build_tree_ch
+  file "*.whole.filter.vcf.gz.csi" into csi_ch 
 
   script:
   
     """
-    tb-profiler  profile -t ${task.cpus} \
-      -1 ${reads[0]} -2 ${reads[1]} \
-      --prefix ${name} \
-      --calling_params "-q ${params.mq}"  \
-      --call_whole_genome \
-      --dir tbprofiler --csv --txt 
+    echo ${bam}
+    snippy --outdir ./ --prefix ${name}.whole --ref ${genome} --bam ${bam} --rgid ${name} --minfrac 0.1 --cpus ${task.cpus} --force
+    tb_variant_filter  -I  --indel_window_size 5 --region_filter pe_ppe,uvp  -P --min_percentage_alt 90  -D --min_depth 30 ${name}.whole.vcf ${name}.whole.filter.vcf
+    bgzip -c ${name}.whole.filter.vcf > ${name}.whole.filter.vcf.gz
+    bcftools index ${name}.whole.filter.vcf.gz
     """
-  
 
 }
 
-*/
+process tbprofiling {
+  
+  label "small_mem"
+  publishDir "${params.outdir}/tbprofiler", mode: 'copy'
+  
+  input:
+  set val(name), file(bam) from bam_to_tbprofiling
+  
+  output:
+  file "vcf/*" into vcf_ch
+  file "results/*" into results_ch
 
+  script:
+  
+    """
+    echo ${bam}
+
+    tb-profiler profile --threads ${task.cpus} --bam ${bam} \
+      --prefix ${name} --csv --txt --verbose 2 
+    
+    """
+
+}
+
+Channel.fromPath("${params.outdir}/tbprofiler/results", type: 'dir')
+  .ifEmpty { exit 1, "Cannot find  directory: ${params.outdir}tbprofiler/results"}
+  .set{ results_dir_ch}
+ 
+
+process tbprofiler_collate {
+  label "small_mem"
+
+  publishDir "${params.outdir}/tbprofiler/collate", mode: "copy" 
+
+  input:
+  file dir from results_dir_ch
+  path result_file from results_ch.collect()
+  
+  output:
+  file "tbprofiler_collate*" into collate_results
+
+
+  script:
+  """
+  
+  echo $dir
+  tb-profiler collate -d $dir -p tbprofiler_collate 
+  """
+ 
+}
+
+process build_tree {
+  label "small_mem"
+
+  publishDir "${params.outdir}/tree", mode: "copy" 
+
+  input:
+  //file vcf_whole from whole_vcf_ch.collect()
+  file  vcf_whole from build_tree_ch.collect()
+  file csi from  csi_ch.collect()
+  output:
+  file("*") into tree_out_ch
+
+  script:
+  """
+  echo ${vcf_whole}
+  bcftools merge -Oz -o merged.whole.vcf *.vcf.gz
+  vcf2phylip.py -i merged.whole.vcf -m ${params.min_samples_locus}
+  raxmlHPC-PTHREADS -m GTRGAMMA -p 12345 -s merged.whole.min${params.min_samples_locus}.phy -n whole.tree -T ${task.cpus}  -x 0123 -N 100 
+  """
+  //
+  
+  //https://digital.csic.es/bitstream/10261/181837/2/2019_J%20Infect%20Dis_suppl_supplementary_material.pdf
+}
 
 workflow.onComplete {
 
