@@ -54,8 +54,8 @@ process get_mtbc_reads {
   publishDir "${params.outdir}/mtbc", mode: "copy" 
 
   input:
-  set val(name), file(kraken2_output_file) from kraken2_output_ch
   set val(name), file(reads) from reads_ch
+  path dir from params.input_kraken2_dir 
   
   output:
   set val(name), file("*.mtbc.fastq") into mtbc_reads_ch
@@ -65,13 +65,13 @@ process get_mtbc_reads {
    if (params.type == 'single-end') {
 
     """
-    taxonFilter.pl $kraken2_output_file  > ${name}_mtbc_accession.txt
+    taxonFilter.pl ${dir}/${name}.kraken2.output.txt  > ${dir}/${name}_mtbc_accession.txt
     seqtk subseq ${reads} ${name}_mtbc_accession.txt > ${name}.mtbc.fastq
     """
   }
   else{
     """
-    taxonFilter.pl $kraken2_output_file  > ${name}_mtbc_accession.txt
+    taxonFilter.pl  ${dir}/${name}.kraken2.output.txt  >  ${name}_mtbc_accession.txt
     seqtk subseq ${reads[0]} ${name}_mtbc_accession.txt > ${name}_R1.mtbc.fastq
     seqtk subseq ${reads[1]} ${name}_mtbc_accession.txt > ${name}_R2.mtbc.fastq
     """
@@ -113,7 +113,7 @@ process mapping_mtbc_and_filter {
    if (params.type == 'single-end') {
     """
      bwa mem -t ${task.cpus} \
-     -c 100 -R '@RG ID:${name} SM:${name} PL:illumina' -M -T 50 \
+     -c 100 -R '@RG\\tID:${name}\\tSM:${name}\\tPL:illumina' -M -T 50 \
      ${genome} ${reads} \
      | samtools view -@ ${task.cpus} -Sb1 -q ${params.mq} - \
      | samtools sort -@ ${task.cpus} -o ${name}.sort.bam -
@@ -135,7 +135,7 @@ process mapping_mtbc_and_filter {
   }
 }
 
-process run_snippy {
+process run_snippy_and_variant_filter {
   
   label "small_mem"
   publishDir "${params.outdir}/snippy", mode: 'copy'
@@ -160,7 +160,7 @@ process run_snippy {
 
 }
 
-process tbprofiling {
+process run_tbprofiling {
   
   label "small_mem"
   publishDir "${params.outdir}/tbprofiler", mode: 'copy'
@@ -189,7 +189,7 @@ Channel.fromPath("${params.outdir}/tbprofiler/results", type: 'dir')
   .set{ results_dir_ch}
  
 
-process tbprofiler_collate {
+process run_tbprofiler_collate {
   label "small_mem"
 
   publishDir "${params.outdir}/tbprofiler/collate", mode: "copy" 
@@ -211,7 +211,7 @@ process tbprofiler_collate {
  
 }
 
-process build_tree {
+process build_genome_tree {
   label "small_mem"
 
   publishDir "${params.outdir}/tree", mode: "copy" 
@@ -221,18 +221,17 @@ process build_tree {
   file  vcf_whole from build_tree_ch.collect()
   file csi from  csi_ch.collect()
   output:
-  file("*") into tree_out_ch
+  file("RAxML_bipartitions*") into tree_out_ch
 
   script:
   """
   echo ${vcf_whole}
-  bcftools merge -Oz -o merged.whole.vcf *.vcf.gz
+  bcftools merge -Oz --threads ${task.cpus} -o merged.whole.vcf *.vcf.gz
   vcf2phylip.py -i merged.whole.vcf -m ${params.min_samples_locus}
-  raxmlHPC-PTHREADS -m GTRGAMMA -p 12345 -s merged.whole.min${params.min_samples_locus}.phy -n whole.tree -T ${task.cpus}  -x 0123 -N 100 
+  raxmlHPC-PTHREADS -m GTRGAMMA -p 12345 -s merged.whole.min${params.min_samples_locus}.phy -n whole_tree_1 -T ${task.cpus} -# 100
+  raxmlHPC-PTHREADS -m GTRGAMMA -p 12345 -b 12345 -s merged.whole.min${params.min_samples_locus}.phy -n whole_tree_2 -T ${task.cpus} -# 100
+  raxmlHPC-PTHREADS -m GTRGAMMA -p 12345 -f b -t RAxML_bestTree.whole_tree_1 -z RAxML_bootstrap.whole_tree_2  -n whole_tree -T ${task.cpus}
   """
-  //
-  
-  //https://digital.csic.es/bitstream/10261/181837/2/2019_J%20Infect%20Dis_suppl_supplementary_material.pdf
 }
 
 workflow.onComplete {

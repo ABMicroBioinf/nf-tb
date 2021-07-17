@@ -5,3 +5,10 @@ http://seqanswers.com/forums/archive/index.php/t-61908.html.
 
 bwa mem -t 2 -c 100 -R '@RG\tID:ERR036228\tSM:ERR036228\tPL:illumina' -M -T 50 /data/software/miniconda3/envs/tb-profiler/share/tbprofiler/tbdb.fasta tbprofiler/00061ac0-6ad9-464a-b8ce-7276c44069d4_TU | samtools sort -@ 2 -o tbprofiler/00061ac0-6ad9-464a-b8ce-7276c44069d4.single.bam -
  //https://digital.csic.es/bitstream/10261/181837/2/2019_J%20Infect%20Dis_suppl_supplementary_material.pdf
+
+ https://training.galaxyproject.org/training-material/topics/variant-analysis/tutorials/tb-variant-analysis/tutorial.html
+ https://usegalaxy.eu/u/poorani/w/snippy-and-tb-variant-filter
+
+ https://github.com/COMBAT-TB/tb_variant_filter
+ https://github.com/tseemann/snippy
+ 
