@@ -2,7 +2,8 @@
 # nf-tb
 ABMicroBioinf/nf-tb is a bioinformatics pipeline designed to analyze Mycobacterium tuberculosis genomes. It takes quality controlled reads and kraken2 output report as input. The pipeline aligns filtered MTBC reads to the H37Rv reference using bowtie2, BWA or minimap2 and then calls variants using bcftools. These variants are then compared to a drug-resistance database. The drug resistance classes and calls were done using tb-profiler. The pipeline also uses Snippy to do rapid SNP calling over the Mycobacterium tuberculosis whole genome. Snippy finds both substitutions (snps) and insertions/deletions (indels) over the whole genome.The identified variants were furthur filtered to exclude 1) the snps in PE/PPE, UVP, and repeat / insertion sequence sites; 2) the minimum alternate allele percentage to accept < 90.0; 3) the minimum read depth (coverage) < 30. The filtered vcf format snps are used to build phylogenetic trees. 
 <br /> 
-![flowchart](https://user-images.githubusercontent.com/52679027/126045519-32d9e0e3-a141-4114-b0c5-ff01cb914b39.png)
+![test](https://user-images.githubusercontent.com/52679027/126048387-4e8773a1-299d-42c9-8bee-706eb47e3db8.png)
+
 <br /> 
 
 
